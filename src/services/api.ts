@@ -16,6 +16,7 @@ export const cameraApi = {
   snapshot: (id: number) => api.post(`/cameras/${id}/snapshot`),
   snapshotUrl: (id: number) => `/api/v1/cameras/${id}/snapshot`,
   latestFrameUrl: (id: number) => `/api/v1/cameras/${id}/latest-frame`,
+  liveFrameUrl: (id: number) => `/api/v1/cameras/${id}/live-frame`,
 };
 
 export const slotApi = {

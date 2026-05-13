@@ -68,23 +68,30 @@ function CameraCard({ camera, onEdit, onDelete, onCapture }: {
   camera: Camera; onEdit: () => void; onDelete: () => void; onCapture: () => void;
 }) {
   const [imgTs, setImgTs] = useState(Date.now());
-  const [imgError, setImgError] = useState(false);
+  // 0 = latest-frame (detection loop), 1 = live-frame (direct capture), 2 = snapshot (static ref)
+  const [imgFallback, setImgFallback] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => { setImgTs(Date.now()); setImgError(false); }, camera.detection_interval * 1000 || 30000);
+    const id = setInterval(() => { setImgTs(Date.now()); setImgFallback(0); }, camera.detection_interval * 1000 || 30000);
     return () => clearInterval(id);
   }, [camera.detection_interval]);
 
-  const imgSrc = imgError
-    ? (camera.reference_snapshot_path ? `${cameraApi.snapshotUrl(camera.id)}?t=${imgTs}` : "")
-    : `${cameraApi.latestFrameUrl(camera.id)}?t=${imgTs}`;
+  function handleImgError() {
+    setImgFallback((prev) => prev + 1);
+  }
+
+  const imgSrc = (() => {
+    if (imgFallback === 0) return `${cameraApi.latestFrameUrl(camera.id)}?t=${imgTs}`;
+    if (imgFallback === 1) return `${cameraApi.liveFrameUrl(camera.id)}?t=${imgTs}`;
+    return camera.reference_snapshot_path ? `${cameraApi.snapshotUrl(camera.id)}?t=${imgTs}` : "";
+  })();
 
   return (
     <div className="card" style={{ overflow: "hidden" }}>
       {/* Image */}
       <div style={{ height: 200, background: "#f1f5f9", position: "relative" }}>
         {imgSrc ? (
-          <img src={imgSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} crossOrigin="anonymous" onError={() => { if (!imgError) setImgError(true); }} />
+          <img src={imgSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} crossOrigin="anonymous" onError={handleImgError} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
             <CamIcon size={36} color="#cbd5e1" />

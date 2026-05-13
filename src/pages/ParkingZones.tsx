@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { cameraApi, slotApi } from "@/services/api";
 import PolygonDrawer from "@/components/PolygonDrawer";
 import type { Camera, ParkingSlot } from "@/types";
-import { Trash2, Crosshair, Eye, PenTool, RefreshCw, AlertTriangle } from "lucide-react";
+import { Trash2, Crosshair, Eye, PenTool, RefreshCw, AlertTriangle, Square, Pentagon } from "lucide-react";
 import { useToast } from "@/components/Toast";
 
 export default function ParkingZones() {
@@ -11,6 +11,7 @@ export default function ParkingZones() {
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [nextLabel, setNextLabel] = useState("");
   const [drawMode, setDrawMode] = useState(false);
+  const [shapeMode, setShapeMode] = useState<"rectangle" | "polygon">("rectangle");
   const [imgTs, setImgTs] = useState(Date.now());
   const toast = useToast();
 
@@ -114,12 +115,28 @@ export default function ParkingZones() {
                 </div>
                 {drawMode && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Shape toggle */}
+                    <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid #cbd5e1" }}>
+                      <button onClick={() => setShapeMode("rectangle")} title="Rectangle" style={{
+                        display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer",
+                        background: shapeMode === "rectangle" ? "#0d9488" : "#fff", color: shapeMode === "rectangle" ? "#fff" : "#64748b",
+                      }}>
+                        <Square size={12} /> Rect
+                      </button>
+                      <button onClick={() => setShapeMode("polygon")} title="Polygon" style={{
+                        display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer",
+                        background: shapeMode === "polygon" ? "#0d9488" : "#fff", color: shapeMode === "polygon" ? "#fff" : "#64748b",
+                        borderLeft: "1px solid #cbd5e1",
+                      }}>
+                        <Pentagon size={12} /> Poly
+                      </button>
+                    </div>
                     <label style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>Label:</label>
                     <input value={nextLabel} onChange={(e) => setNextLabel(e.target.value)} className="input-field" style={{ width: 80, height: 32, fontSize: 12 }} />
                   </div>
                 )}
               </div>
-              {drawMode && <span style={{ fontSize: 11, color: "#0d9488", fontWeight: 500 }}>Click to draw. Click near first point to close. ESC to cancel.</span>}
+              {drawMode && <span style={{ fontSize: 11, color: "#0d9488", fontWeight: 500 }}>{shapeMode === "rectangle" ? "Click first corner, then opposite corner." : "Click to draw polygon. Click near first point to close. ESC to cancel."}</span>}
             </div>
 
             <PolygonDrawer
@@ -129,6 +146,7 @@ export default function ParkingZones() {
               onComplete={drawMode ? handlePolygonComplete : undefined}
               onSlotClick={!drawMode ? (s) => handleDeleteSlot(s) : undefined}
               drawingEnabled={drawMode}
+              drawingMode={shapeMode}
             />
 
             {/* Legend */}

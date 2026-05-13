@@ -13,13 +13,14 @@ const STATE_COLORS: Record<string, { fill: string; stroke: string }> = {
 function CameraCard({ camera, slots }: { camera: Camera; slots: ParkingSlot[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const drawRef = useRef<() => void>(() => {});
   const [imgTs, setImgTs] = useState(Date.now());
   const W = 480, H = 300;
 
   useEffect(() => {
-    const id = setInterval(() => setImgTs(Date.now()), camera.detection_interval * 1000 || 30000);
+    const id = setInterval(() => setImgTs(Date.now()), 3000);
     return () => clearInterval(id);
-  }, [camera.detection_interval]);
+  }, []);
 
   const draw = useCallback(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -28,9 +29,18 @@ function CameraCard({ camera, slots }: { camera: Camera; slots: ParkingSlot[] })
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, W, H);
 
+    // Scale image to fit canvas maintaining aspect ratio (letterbox)
+    const fw = camera.frame_width || 1920;
+    const fh = camera.frame_height || 1080;
+    const imgScale = Math.min(W / fw, H / fh);
+    const imgW = fw * imgScale;
+    const imgH = fh * imgScale;
+    const imgX = (W - imgW) / 2;
+    const imgY = (H - imgH) / 2;
+
     if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
       ctx.globalAlpha = 0.5;
-      ctx.drawImage(imgRef.current, 0, 0, W, H);
+      ctx.drawImage(imgRef.current, imgX, imgY, imgW, imgH);
       ctx.globalAlpha = 1.0;
     }
 
@@ -41,59 +51,59 @@ function CameraCard({ camera, slots }: { camera: Camera; slots: ParkingSlot[] })
       return;
     }
 
-    const allPts = slotsWithPoly.flatMap((s) => { try { return JSON.parse(s.polygon_coords!); } catch { return []; } });
-    if (allPts.length === 0) return;
-    const maxX = Math.max(...allPts.map((p: number[]) => p[0]));
-    const maxY = Math.max(...allPts.map((p: number[]) => p[1]));
-    const minX = Math.min(...allPts.map((p: number[]) => p[0]));
-    const minY = Math.min(...allPts.map((p: number[]) => p[1]));
-    const margin = 25;
-    const scale = Math.min((W - margin * 2) / (maxX - minX || 1), (H - margin * 2) / (maxY - minY || 1));
-    const ox = (W - (maxX - minX) * scale) / 2 - minX * scale;
-    const oy = (H - (maxY - minY) * scale) / 2 - minY * scale;
-
     for (const slot of slotsWithPoly) {
       try {
         const pts: number[][] = JSON.parse(slot.polygon_coords!);
         const color = STATE_COLORS[slot.state] || STATE_COLORS.EMPTY;
+
+        // Map original frame coords → canvas coords using actual frame dimensions
+        const toX = (x: number) => x * imgScale + imgX;
+        const toY = (y: number) => y * imgScale + imgY;
+
         ctx.beginPath();
-        ctx.moveTo(pts[0][0] * scale + ox, pts[0][1] * scale + oy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * scale + ox, pts[i][1] * scale + oy);
+        ctx.moveTo(toX(pts[0][0]), toY(pts[0][1]));
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(toX(pts[i][0]), toY(pts[i][1]));
         ctx.closePath();
         ctx.fillStyle = color.fill; ctx.fill();
         ctx.strokeStyle = color.stroke; ctx.lineWidth = 2; ctx.stroke();
-        const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length * scale + ox;
-        const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length * scale + oy;
 
-        // Label bg
+        const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+
         const label = slot.label;
         ctx.font = "bold 11px Inter, sans-serif";
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.beginPath();
-        ctx.roundRect(cx - tw / 2 - 6, cy - 16, tw + 12, 28, 4);
+        ctx.roundRect(toX(cx) - tw / 2 - 6, toY(cy) - 16, tw + 12, 28, 4);
         ctx.fill();
 
         ctx.fillStyle = "#fff"; ctx.textAlign = "center";
-        ctx.fillText(label, cx, cy - 2);
+        ctx.fillText(label, toX(cx), toY(cy) - 2);
         ctx.font = "9px Inter, sans-serif"; ctx.fillStyle = color.stroke;
-        ctx.fillText(slot.state, cx, cy + 10);
+        ctx.fillText(slot.state, toX(cx), toY(cy) + 10);
       } catch {}
     }
-  }, [slots]);
+  }, [slots, camera.frame_width, camera.frame_height]);
 
+  // Keep drawRef in sync so image loader always calls the latest draw
+  useEffect(() => { drawRef.current = draw; }, [draw]);
+
+  // Reload image every 3s; on slot state change just redraw with existing image
   useEffect(() => {
-    const img = new Image(); img.crossOrigin = "anonymous";
-    img.src = `${cameraApi.latestFrameUrl(camera.id)}?t=${imgTs}`;
-    img.onload = () => { imgRef.current = img; draw(); };
-    img.onerror = () => {
-      const fb = new Image(); fb.crossOrigin = "anonymous";
-      fb.src = `${cameraApi.snapshotUrl(camera.id)}?t=${imgTs}`;
-      fb.onload = () => { imgRef.current = fb; draw(); };
-      fb.onerror = () => draw();
+    const tryLoad = (src: string, onErr: () => void) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.src = src;
+      img.onload = () => { imgRef.current = img; drawRef.current(); };
+      img.onerror = onErr;
     };
-  }, [camera.id, draw, imgTs]);
+    tryLoad(
+      `${cameraApi.latestFrameUrl(camera.id)}?t=${imgTs}`,
+      () => tryLoad(`${cameraApi.snapshotUrl(camera.id)}`, () => drawRef.current()),
+    );
+  }, [camera.id, imgTs]);  // NOT draw — avoids re-fetching image on every slot state change
 
+  // Redraw immediately when slot states change (no new image fetch needed)
   useEffect(() => { draw(); }, [draw]);
 
   const vehicle = slots.filter((s) => s.state === "VEHICLE").length;
@@ -150,7 +160,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
     if (!polling) return;
-    const id = setInterval(fetchData, 5000);
+    const id = setInterval(fetchData, 3000);
     return () => clearInterval(id);
   }, [fetchData, polling]);
 
