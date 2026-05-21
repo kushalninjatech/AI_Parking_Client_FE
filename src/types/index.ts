@@ -17,6 +17,8 @@ export interface ParkingSlot {
   label: string;
   camera_id: number;
   state: "VEHICLE" | "EMPTY" | "OBSTRUCTED";
+  slot_type: "CAR" | "TWO_WHEELER" | "GENERAL";
+  detected_vehicle_type: "CAR" | "TWO_WHEELER" | null;
   polygon_coords: string | null;
   pos_x1: number | null;
   pos_y1: number | null;

@@ -81,7 +81,10 @@ function CameraCard({ camera, slots }: { camera: Camera; slots: ParkingSlot[] })
         ctx.fillStyle = "#fff"; ctx.textAlign = "center";
         ctx.fillText(label, toX(cx), toY(cy) - 2);
         ctx.font = "9px Inter, sans-serif"; ctx.fillStyle = color.stroke;
-        ctx.fillText(slot.state, toX(cx), toY(cy) + 10);
+        const displayText = slot.state === "VEHICLE" && slot.detected_vehicle_type
+          ? (slot.detected_vehicle_type === "TWO_WHEELER" ? "2W" : "CAR")
+          : slot.state;
+        ctx.fillText(displayText, toX(cx), toY(cy) + 10);
       } catch {}
     }
   }, [slots, camera.frame_width, camera.frame_height]);

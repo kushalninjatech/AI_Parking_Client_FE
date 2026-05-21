@@ -12,6 +12,7 @@ export default function ParkingZones() {
   const [nextLabel, setNextLabel] = useState("");
   const [drawMode, setDrawMode] = useState(false);
   const [shapeMode, setShapeMode] = useState<"rectangle" | "polygon">("rectangle");
+  const [slotType, setSlotType] = useState("GENERAL");
   const [imgTs, setImgTs] = useState(Date.now());
   const toast = useToast();
 
@@ -35,7 +36,7 @@ export default function ParkingZones() {
   async function handlePolygonComplete(polygon: number[][]) {
     if (!selectedCamera) return;
     try {
-      await slotApi.create({ label: nextLabel || `S-${slots.length + 1}`, camera_id: selectedCamera.id, polygon_coords: JSON.stringify(polygon) });
+      await slotApi.create({ label: nextLabel || `S-${slots.length + 1}`, camera_id: selectedCamera.id, polygon_coords: JSON.stringify(polygon), slot_type: slotType });
       toast.success(`Slot ${nextLabel} created`);
       loadSlots();
     } catch {
@@ -133,6 +134,12 @@ export default function ParkingZones() {
                     </div>
                     <label style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>Label:</label>
                     <input value={nextLabel} onChange={(e) => setNextLabel(e.target.value)} className="input-field" style={{ width: 80, height: 32, fontSize: 12 }} />
+                    <label style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>Type:</label>
+                    <select value={slotType} onChange={(e) => setSlotType(e.target.value)} className="input-field" style={{ width: 100, height: 32, fontSize: 11 }}>
+                      <option value="GENERAL">General</option>
+                      <option value="CAR">Car</option>
+                      <option value="TWO_WHEELER">2-Wheeler</option>
+                    </select>
                   </div>
                 )}
               </div>
@@ -185,7 +192,27 @@ export default function ParkingZones() {
                   <div key={s.id} style={{ borderRadius: 12, border: `1px solid ${stateConfig.border}`, background: stateConfig.bg, padding: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{s.label}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: stateConfig.color }}>{s.state}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: stateConfig.color }}>
+                        {s.state === "VEHICLE" && s.detected_vehicle_type ? (s.detected_vehicle_type === "TWO_WHEELER" ? "2W" : "Car") : s.state}
+                      </span>
+                      {s.slot_type && s.slot_type !== "GENERAL" && <span style={{ fontSize: 8, opacity: 0.5 }}>{s.slot_type === "TWO_WHEELER" ? "2W slot" : "Car slot"}</span>}
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <select
+                        value={s.slot_type || "GENERAL"}
+                        onChange={async (e) => {
+                          try {
+                            await slotApi.update(s.id, { slot_type: e.target.value });
+                            loadSlots();
+                          } catch { toast.error("Failed to update slot type"); }
+                        }}
+                        className="input-field"
+                        style={{ width: "100%", height: 26, fontSize: 10 }}
+                      >
+                        <option value="GENERAL">General</option>
+                        <option value="CAR">Car</option>
+                        <option value="TWO_WHEELER">2-Wheeler</option>
+                      </select>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => handleCalibrateSlot(s)} className="btn-secondary" style={{ flex: 1, height: 28, fontSize: 10 }}>
