@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Parking Client Frontend (Vite/npm)
+After=network.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+Group=__RUN_GROUP__
+WorkingDirectory=__INSTALL_DIR__
+Environment="PATH=/usr/bin:/bin:/usr/local/bin"
+ExecStart=__NPM__ run dev
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
