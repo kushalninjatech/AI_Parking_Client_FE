@@ -63,7 +63,8 @@ export default function ParkingZones() {
   const snapshotUrl = selectedCamera ? `${cameraApi.latestFrameUrl(selectedCamera.id)}?t=${imgTs}` : "";
   const fallbackUrl = selectedCamera ? `${cameraApi.snapshotUrl(selectedCamera.id)}?t=${imgTs}` : "";
 
-  const vehicle = slots.filter((s) => s.state === "VEHICLE").length;
+  const mismatched = slots.filter((s) => s.state === "VEHICLE" && s.slot_type !== "GENERAL" && s.detected_vehicle_type != null && s.detected_vehicle_type !== s.slot_type).length;
+  const vehicle = slots.filter((s) => s.state === "VEHICLE").length - mismatched;
   const empty = slots.filter((s) => s.state === "EMPTY").length;
   const obstructed = slots.filter((s) => s.state === "OBSTRUCTED").length;
 
@@ -163,6 +164,7 @@ export default function ParkingZones() {
                   { c: "#22c55e", l: "Empty", v: empty },
                   { c: "#ef4444", l: "Vehicle", v: vehicle },
                   { c: "#f59e0b", l: "Obstructed", v: obstructed },
+                  ...(mismatched > 0 ? [{ c: "#3b82f6", l: "Mismatched", v: mismatched }] : []),
                 ].map(({ c, l, v }) => (
                   <span key={l} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ width: 10, height: 10, borderRadius: 3, background: `${c}33`, border: `1.5px solid ${c}` }} />
@@ -183,7 +185,10 @@ export default function ParkingZones() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 550, overflowY: "auto", paddingRight: 4 }}>
               {slots.map((s) => {
-                const stateConfig = s.state === "VEHICLE"
+                const isMismatched = s.state === "VEHICLE" && s.slot_type !== "GENERAL" && s.detected_vehicle_type != null && s.detected_vehicle_type !== s.slot_type;
+                const stateConfig = isMismatched
+                  ? { bg: "#eff6ff", border: "#bfdbfe", color: "#2563eb" }
+                  : s.state === "VEHICLE"
                   ? { bg: "#fef2f2", border: "#fecaca", color: "#dc2626" }
                   : s.state === "OBSTRUCTED"
                   ? { bg: "#fffbeb", border: "#fed7aa", color: "#d97706" }
