@@ -13,7 +13,12 @@ export default function ParkingZones() {
   const [drawMode, setDrawMode] = useState(false);
   const [shapeMode, setShapeMode] = useState<"rectangle" | "polygon">("rectangle");
   const [slotType, setSlotType] = useState("GENERAL");
+  const [capCar, setCapCar] = useState("1");
+  const [cap2w, setCap2w] = useState("0");
   const [imgTs, setImgTs] = useState(Date.now());
+  const [pendingPolygon, setPendingPolygon] = useState<number[][] | null>(null);
+  const [showSlotModal, setShowSlotModal] = useState(false);
+  const [modalSaving, setModalSaving] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -33,14 +38,34 @@ export default function ParkingZones() {
 
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  async function handlePolygonComplete(polygon: number[][]) {
+  function handlePolygonComplete(polygon: number[][]) {
     if (!selectedCamera) return;
+    setPendingPolygon(polygon);
+    setSlotType("GENERAL");
+    setCapCar("1");
+    setCap2w("0");
+    setShowSlotModal(true);
+  }
+
+  async function handleSlotModalSave() {
+    if (!selectedCamera || !pendingPolygon) return;
+    const label = nextLabel.trim();
+    if (!label) { toast.error("Enter a slot label"); return; }
+    setModalSaving(true);
     try {
-      await slotApi.create({ label: nextLabel || `S-${slots.length + 1}`, camera_id: selectedCamera.id, polygon_coords: JSON.stringify(polygon), slot_type: slotType });
-      toast.success(`Slot ${nextLabel} created`);
+      await slotApi.create({
+        label, camera_id: selectedCamera.id,
+        polygon_coords: JSON.stringify(pendingPolygon), slot_type: slotType,
+        capacity_car: parseInt(capCar) || 0, capacity_two_wheeler: parseInt(cap2w) || 0,
+      });
+      toast.success(`Slot ${label} created`);
+      setShowSlotModal(false);
+      setPendingPolygon(null);
       loadSlots();
     } catch {
       toast.error("Failed to create slot");
+    } finally {
+      setModalSaving(false);
     }
   }
 
@@ -135,12 +160,6 @@ export default function ParkingZones() {
                     </div>
                     <label style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>Label:</label>
                     <input value={nextLabel} onChange={(e) => setNextLabel(e.target.value)} className="input-field" style={{ width: 80, height: 32, fontSize: 12 }} />
-                    <label style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>Type:</label>
-                    <select value={slotType} onChange={(e) => setSlotType(e.target.value)} className="input-field" style={{ width: 100, height: 32, fontSize: 11 }}>
-                      <option value="GENERAL">General</option>
-                      <option value="CAR">Car</option>
-                      <option value="TWO_WHEELER">2-Wheeler</option>
-                    </select>
                   </div>
                 )}
               </div>
@@ -196,11 +215,24 @@ export default function ParkingZones() {
                 return (
                   <div key={s.id} style={{ borderRadius: 12, border: `1px solid ${stateConfig.border}`, background: stateConfig.bg, padding: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{s.label}</span>
+                      <input
+                        defaultValue={s.label}
+                        onBlur={async (e) => {
+                          const val = e.target.value.trim();
+                          if (val && val !== s.label) {
+                            try { await slotApi.update(s.id, { label: val }); loadSlots(); }
+                            catch { toast.error("Failed to update label"); e.target.value = s.label; }
+                          } else { e.target.value = s.label; }
+                        }}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", background: "transparent", border: "none", borderBottom: "1px solid transparent", width: 80, padding: 0, outline: "none" }}
+                        onFocus={(e) => { e.target.style.borderBottomColor = "#0d9488"; }}
+                        onMouseOver={(e) => { (e.target as HTMLInputElement).style.borderBottomColor = "#cbd5e1"; }}
+                        onMouseOut={(e) => { if (document.activeElement !== e.target) (e.target as HTMLInputElement).style.borderBottomColor = "transparent"; }}
+                      />
                       <span style={{ fontSize: 10, fontWeight: 700, color: stateConfig.color }}>
                         {s.state === "VEHICLE" && s.detected_vehicle_type ? (s.detected_vehicle_type === "TWO_WHEELER" ? "2W" : "Car") : s.state}
                       </span>
-                      {s.slot_type && s.slot_type !== "GENERAL" && <span style={{ fontSize: 8, opacity: 0.5 }}>{s.slot_type === "TWO_WHEELER" ? "2W slot" : "Car slot"}</span>}
                     </div>
                     <div style={{ marginBottom: 6 }}>
                       <select
@@ -219,6 +251,26 @@ export default function ParkingZones() {
                         <option value="TWO_WHEELER">2-Wheeler</option>
                       </select>
                     </div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>Car Cap</label>
+                        <input type="number" min="0" value={s.capacity_car ?? 0}
+                          onChange={async (e) => {
+                            try { await slotApi.update(s.id, { capacity_car: parseInt(e.target.value) || 0 }); loadSlots(); }
+                            catch { toast.error("Failed to update"); }
+                          }}
+                          className="input-field" style={{ width: "100%", height: 24, fontSize: 10, textAlign: "center" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>2W Cap</label>
+                        <input type="number" min="0" value={s.capacity_two_wheeler ?? 0}
+                          onChange={async (e) => {
+                            try { await slotApi.update(s.id, { capacity_two_wheeler: parseInt(e.target.value) || 0 }); loadSlots(); }
+                            catch { toast.error("Failed to update"); }
+                          }}
+                          className="input-field" style={{ width: "100%", height: 24, fontSize: 10, textAlign: "center" }} />
+                      </div>
+                    </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => handleCalibrateSlot(s)} className="btn-secondary" style={{ flex: 1, height: 28, fontSize: 10 }}>
                         <Crosshair size={10} /> Calibrate
@@ -231,6 +283,50 @@ export default function ParkingZones() {
                 );
               })}
               {slots.length === 0 && <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: 24 }}>Draw polygons to create slots</p>}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Slot Creation Modal */}
+      {showSlotModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)" }} onClick={() => { setShowSlotModal(false); setPendingPolygon(null); }} />
+          <div style={{ position: "relative", background: "#fff", borderRadius: 16, padding: 24, width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", marginBottom: 16 }}>New Parking Slot</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>Label</label>
+                <input value={nextLabel} onChange={(e) => setNextLabel(e.target.value)} className="input-field" style={{ width: "100%", height: 36, fontSize: 13, marginTop: 4 }} placeholder="A-01" />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>Slot Type</label>
+                <select value={slotType} onChange={(e) => {
+                  setSlotType(e.target.value);
+                  if (e.target.value === "CAR") { setCapCar("1"); setCap2w("0"); }
+                  else if (e.target.value === "TWO_WHEELER") { setCapCar("0"); setCap2w("1"); }
+                  else { setCapCar("1"); setCap2w("0"); }
+                }} className="input-field" style={{ width: "100%", height: 36, fontSize: 13, marginTop: 4 }}>
+                  <option value="GENERAL">General (Any Vehicle)</option>
+                  <option value="CAR">Car</option>
+                  <option value="TWO_WHEELER">2-Wheeler</option>
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>Car Capacity</label>
+                  <input type="number" min="0" value={capCar} onChange={(e) => setCapCar(e.target.value)} className="input-field" style={{ width: "100%", height: 36, fontSize: 13, textAlign: "center", marginTop: 4 }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>2W Capacity</label>
+                  <input type="number" min="0" value={cap2w} onChange={(e) => setCap2w(e.target.value)} className="input-field" style={{ width: "100%", height: 36, fontSize: 13, textAlign: "center", marginTop: 4 }} />
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowSlotModal(false); setPendingPolygon(null); }} className="btn-secondary" style={{ height: 36, fontSize: 13, padding: "0 16px" }}>Cancel</button>
+              <button onClick={handleSlotModalSave} disabled={modalSaving} className="btn-primary" style={{ height: 36, fontSize: 13, padding: "0 20px" }}>
+                {modalSaving ? "Creating..." : "Create Slot"}
+              </button>
             </div>
           </div>
         </div>
